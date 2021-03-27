@@ -1,0 +1,25 @@
+Visualizing the uncertainty for the Double Gyre data set. 
+
+Verifying the benefits of using feature-guided seed placement. Comparing feature-guided seed placement to uncertainty guided seed placement. 
+
+Data set info:
+
+Spatial information:
+Assume base grid resolution of 256 x 128 = 32,768 grid points. 
+
+Sample using 1:2, 1:4, 1:8
+These correspond to:
+1:4 is 8,192 samples >> 128 x 64  
+1:16 is 2,048 samples >> 64 x 32 
+1:64 is 512 samples >> 32 x 16 
+
+Temporal information:
+Step size = 0.01
+Period = 10
+Cycles in 1 period = 1000
+
+Intervals = 1 >> 10 flow maps for 1 period. 
+Intervals = 2 >> 5 flow maps for 1 period. 
+
+Test information:
+10000 random seeds in the domain. With test particles along the boundary (200 in x, 100 in y). 

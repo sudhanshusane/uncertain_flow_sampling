@@ -1,0 +1,13 @@
+#!/bin/bash
+
+INPUT="/home/sci/ssane/data/DoubleGyre/DoubleGyre_TimeVarying.vtk"
+DIMX=256
+DIMY=128
+DIMZ=1001
+NUM_SEEDS=10000
+SEED_PATH="seeds.txt"
+OUTPUT="DoubleGyre_Pathlines_GT.vtk"
+ITERATIONS=10
+NUM_STEPS_PER_ITERATION=100
+
+./ComputeGTPathlines $INPUT $DIMX $DIMY $DIMZ $NUM_SEEDS $SEED_PATH $OUTPUT $ITERATIONS $NUM_STEPS_PER_ITERATION
