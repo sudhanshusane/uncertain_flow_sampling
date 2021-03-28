@@ -23,3 +23,6 @@ Intervals = 2 >> 5 flow maps for 1 period.
 
 Test information:
 10000 random seeds in the domain. With test particles along the boundary (200 in x, 100 in y). 
+
+
+Using an offset of OFFSET="0.000001" to seed flow maps inside the boundary. Some particle advection issue is resulting in the particles not advecting. 

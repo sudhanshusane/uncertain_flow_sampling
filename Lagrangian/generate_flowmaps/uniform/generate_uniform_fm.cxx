@@ -85,7 +85,7 @@ int main(int argc, char* argv[])
   float y_spacing = (yc[dims[1]-1] - yc[0])/(dims[1]-1);
   float z_spacing = (zc[dims[2]-1] - zc[0])/(dims[2]-1);
 
-	float step_size = z_spacing;
+	float step_size = 0.01;
 
   using Vec3f = vtkm::Vec<vtkm::FloatDefault, 3>;
   vtkm::Id3 datasetDims(dims[0], dims[1], dims[2]);
@@ -135,12 +135,13 @@ int main(int argc, char* argv[])
 	sdims[1] = atoi(argv[6]);	
 	int iterations = atoi(argv[8]);
 	int num_steps_iter = atoi(argv[9]);
+	float offset = atof(argv[10]);
 	
 	int num_seeds_slice = sdims[0]*sdims[1];
 	int num_seeds_total = sdims[0]*sdims[1]*iterations;
   
-	float sx_spacing = (xc[dims[0]-1] - xc[0])/(sdims[0]-1);
-  float sy_spacing = (yc[dims[1]-1] - yc[0])/(sdims[1]-1);
+	float sx_spacing = ((xc[dims[0]-1]-offset) - (xc[0]+offset))/(sdims[0]-1);
+  float sy_spacing = ((yc[dims[1]-1]-offset) - (yc[0]+offset))/(sdims[1]-1);
 	
 	vtkm::cont::ArrayHandle<vtkm::Particle> seed_set;
 	seed_set.Allocate(num_seeds_total);
@@ -155,8 +156,8 @@ int main(int argc, char* argv[])
 		{
 			for(int k = 0; k < sdims[0]; k++)
 			{
-				x = xc[0] + (k*sx_spacing);
-				y = yc[0] + (j*sy_spacing);
+				x = (xc[0]+offset) + (k*sx_spacing);
+				y = (yc[0]+offset) + (j*sy_spacing);
 				seed_set.WritePortal().Set(seed_counter, vtkm::Particle(Vec3f(static_cast<vtkm::FloatDefault>(x), static_cast<vtkm::FloatDefault>(y), static_cast<vtkm::FloatDefault>(time)), seed_counter));
 				seed_counter++;
 				pointCoordinates.push_back(vtkm::Vec3f_32(x,y,time));
@@ -176,9 +177,7 @@ int main(int argc, char* argv[])
 	for(int p = 0; p < num_seeds_total; p++)
 	{
 		auto pt = current_set.ReadPortal().Get(p).Pos;
-		pointCoordinates.push_back(vtkm::Vec3f_32(pt[0], pt[1], pt[2]));	
-//		seed_set.WritePortal().Set(p, vtkm::Particle(Vec3f(static_cast<vtkm::FloatDefault>(pt[0]), 
-//		static_cast<vtkm::FloatDefault>(pt[1]), static_cast<vtkm::FloatDefault>(pt[2])), p));
+		pointCoordinates.push_back(vtkm::Vec3f_32(pt[0], pt[1], pt[2]));	// This is a problem ** Some particles are not being advected. 
 	}
 
 	for(int p = 0; p < num_seeds_total; p++)
