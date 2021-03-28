@@ -1,0 +1,15 @@
+#!/bin/bash
+
+INPUT="/home/sci/ssane/data/DoubleGyre/DoubleGyre_TimeVarying.vtk"
+DIMX=256
+DIMY=128
+DIMZ=1001
+
+SDIMX=32
+SDIMY=16
+
+OUTPUT="Uniform_1_64.vtk"
+ITERATIONS=10
+NUM_STEPS_PER_ITERATION=100
+
+./ComputeGTPathlines $INPUT $DIMX $DIMY $DIMZ $SDIMX $SDIMY $OUTPUT $ITERATIONS $NUM_STEPS_PER_ITERATION

@@ -7,7 +7,7 @@ Data set info:
 Spatial information:
 Assume base grid resolution of 256 x 128 = 32,768 grid points. 
 
-Sample using 1:2, 1:4, 1:8
+Sample using 1:4, 1:16, 1:64
 These correspond to:
 1:4 is 8,192 samples >> 128 x 64  
 1:16 is 2,048 samples >> 64 x 32 
