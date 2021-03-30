@@ -94,6 +94,124 @@ uint32_t randCMWC(struct cmwc_state *state)  //EDITED parameter *state was missi
   return state->Q[state->i] = m - x;
 }
 
+float calculateEntropy(int *bins, int num_bins)
+{
+  float probability[num_bins];
+  int total_sum = 0;
+  for(int i = 0; i < num_bins; i++)
+  {
+    total_sum += bins[i];
+  }
+
+  for(int i = 0; i < num_bins; i++)
+  {
+    probability[i] = bins[i]/(total_sum*1.0);
+  }
+
+  float entropy = 0.0;
+
+  for(int i = 0; i < num_bins; i++)
+  {
+    if(probability[i] > 0.0)
+      entropy -= (probability[i]*log2(probability[i]));
+  }
+
+  return entropy;
+}
+
+void estimateDistribution(int *bins, int num_bins, float* x, float* y, float* z, int N)
+{ 
+  /* There are DIM_THETA * DIM_PHI bins */
+  
+  double theta_range = 360.0/DIM_THETA; // 12
+  double phi_range = 180.0/DIM_PHI; // 12
+  
+  /* BINS are ordered by increasing PHI
+ *  // 0 [0,0] to [theta_range + 0 , phi_range + 0] .. 1 [0, phi_range + 0] to [theta_range + 0, phi_range*2 + 0]
+ *  // Theta_index = theta/theta_range; */
+  
+  int num_samples = N*N;
+  for(int i = 0; i < num_samples; i++)
+  { 
+    /* All values of theta and phi are between:
+ *  // 0 < Theta < 360
+ *  // 0 < Phi < 180 */
+    
+    double radius, theta, phi;
+    radius = sqrt((x[i]*x[i]) + (y[i]*y[i]) + (z[i]*z[i]));
+    if(radius > 0)
+    { 
+      theta = (atan2(y[i],x[i]))*(180/PI);
+      phi = (acos(z[i]/radius))*(180/PI);
+      if(theta < 0) 
+        theta = 360 + theta; /* theta value is negative, i.e., -90 is the same as 270 */
+    }
+    else
+    { 
+      theta = 0;
+      phi = 0;
+    }
+    
+    int t_index = theta/theta_range;
+    int p_index = phi/phi_range;
+    int bin_index = (t_index * DIM_PHI) + p_index;
+    if(bin_index > DIM_THETA*DIM_PHI)
+    { 
+      cout << "Indexing error" << endl;
+    }
+    else
+    { 
+      bins[bin_index]++;
+    }
+  }
+}
+
+void sampleNeighborhood(float *sample_x, float *sample_y, float *sample_z, int N, int *dims, int i, int j, float *vec_x, float *vec_y, float *vec_z)
+{ 
+  int offset = (N-1)/2;
+  int num_samples = N*N;
+  int cnt = 0;
+  
+  if(dims[0] > N && dims[1] > N) // && dims[2] > N
+  {   
+    for(int q = j - offset; q < j + offset; q++)
+    { 
+      for(int p = i - offset; p < i + offset; p++) // x grows fastest
+      {     
+    /* Left out
+ *  // Right out
+ *  // Top out
+ *  // Bottom out
+ *  // Front out
+ *  // Back out */
+            int x_i, y_i, z_i;
+            if(p < 0)
+              x_i = -1*p;
+            else if(p > (dims[0] -1))        
+              x_i = (dims[0] - 1) - (p - (dims[0] - 1));
+            else
+              x_i = p;
+            if(q < 0)
+              y_i = -1*q;
+            else if(q > (dims[1] -1))        
+              y_i = (dims[1] - 1) - (q - (dims[1] - 1));
+            else
+              y_i = q;
+              
+						int index = y_i*dims[0] + x_i;
+            sample_x[cnt] = vec_x[index];
+            sample_y[cnt] = vec_y[index];
+            sample_z[cnt] = vec_z[index];
+            cnt++;
+        }
+      }
+  }
+  else
+  { 
+    /* Neighborhood too large */
+  }
+}
+
 namespace worklets
 {
 
@@ -103,12 +221,13 @@ namespace worklets
       typedef void ControlSignature(FieldOut, WholeArrayIn);
       typedef void ExecutionSignature(_1, _2, WorkIndex);
       
-      VTKM_CONT VectorEntropy(int t, int p, int x, int y)
+      VTKM_CONT VectorEntropy(int t, int p, int x, int y, int n)
       {
         dim_theta = t;
         dim_phi = p;
         dims[0] = x;
         dims[1] = y;
+				N = n;
 //        dims[2] = z;
       }
       
@@ -120,9 +239,9 @@ namespace worklets
         int idx[2];
         idx[0] = index % (dims[0]);
         idx[1] = index / (dims[0]);
-        int N = 9;
         int offset = (N-1)/2;            
-        int num_samples = ((offset*2)+1) * ((offset*2)+1) * ((offset*2)+1); 
+//        int num_samples = ((offset*2)+1) * ((offset*2)+1) * ((offset*2)+1); 
+        int num_samples = ((offset*2)+1) * ((offset*2)+1); 
    
         int count = 0;
             
@@ -226,6 +345,7 @@ namespace worklets
     private:
       int dim_theta, dim_phi;
       int dims[2];
+			int N;
   };
   
 
@@ -483,6 +603,7 @@ int main(int argc, char* argv[])
 	float exponent = atof(argv[11]);	
 	float minimum = atof(argv[12]);	
 	float inflate = atof(argv[13]);	
+	int neighborhood = atoi(argv[14]);
 	int num_seeds_slice = sdims[0]*sdims[1];
 	int num_seeds_total = sdims[0]*sdims[1]*iterations;
   
@@ -492,6 +613,15 @@ int main(int argc, char* argv[])
 	float x, y, s_time;
 	int seed_counter = 0;
 
+
+/*
+  float* vec_x, *vec_y, *vec_z;
+  vec_x = (float*)malloc(sizeof(float)*num_pts_slice);
+  vec_y = (float*)malloc(sizeof(float)*num_pts_slice);
+  vec_z = (float*)malloc(sizeof(float)*num_pts_slice);
+*/
+
+
 	/* Seed placement steps.
  * Extract field at grid points
  * Sum the values and create a cell field.
@@ -499,15 +629,15 @@ int main(int argc, char* argv[])
  * Generate a random number. 
  */
   
-/*	vtkm::Id3 vortDims(dims[0], dims[1], 1);
-  Vec3f origin3d(static_cast<vtkm::FloatDefault>(xc[0]),
-                 static_cast<vtkm::FloatDefault>(yc[0]),
-                 static_cast<vtkm::FloatDefault>(zc[0]));
-  Vec3f spacing3d(static_cast<vtkm::FloatDefault>(x_spacing),
-                  static_cast<vtkm::FloatDefault>(y_spacing),
-                  static_cast<vtkm::FloatDefault>(z_spacing));
-  vtkm::cont::DataSet vortOutput;
-  vortOutput = uniformDatasetBuilder3d.Create(vortDims, origin3d, spacing3d);
+/*	vtkm::Id3 entDims(dims[0], dims[1], 1);
+//  Vec3f origin3d(static_cast<vtkm::FloatDefault>(xc[0]),
+//                 static_cast<vtkm::FloatDefault>(yc[0]),
+//                 static_cast<vtkm::FloatDefault>(zc[0]));
+//  Vec3f spacing3d(static_cast<vtkm::FloatDefault>(x_spacing),
+//                  static_cast<vtkm::FloatDefault>(y_spacing),
+//                  static_cast<vtkm::FloatDefault>(z_spacing));
+  vtkm::cont::DataSet entOutput;
+  entOutput = uniformDatasetBuilder3d.Create(entDims, origin3d, spacing3d);
 */
 
 	for(int k = 0; k < iterations; k++)
@@ -528,48 +658,54 @@ int main(int argc, char* argv[])
     	  vec[1] = att2->GetTuple1(index1);
   	    vec[2] = 0.0;
 				velocityArray.WritePortal().Set(index2, vtkm::Vec<vtkm::FloatDefault,3>(vec[0], vec[1], vec[2]));
+
+//        vec_x[index2] = vec[0];
+//        vec_y[index2] = vec[1];
+//        vec_z[index2] = vec[2];
     	}
   	}
-/*
-		vtkSmartPointer<vtkStructuredGrid> slice = vtkSmartPointer<vtkStructuredGrid>::New();
-  	slice->SetDimensions(dims[0], dims[1], 1);
-  	slice->SetPoints(points);
-  	slice->GetPointData()->AddArray(vel_array);
-
-  	vtkSmartPointer<vtkGradientFilter> gradient = vtkSmartPointer<vtkGradientFilter>::New();
-  	gradient->SetInputData(slice);
-  	gradient->SetInputScalars(vtkDataObject::FIELD_ASSOCIATION_POINTS, "velocity");
-  	gradient->SetComputeVorticity(1);
-  	gradient->SetComputeQCriterion(0);
-  	gradient->SetComputeDivergence(0);
-	  gradient->Update();
-	
-	  vtkDoubleArray *vorticity_field = vtkDoubleArray::SafeDownCast(gradient->GetOutput()->GetPointData()->GetArray("Vorticity"));			
-*/
-    vtkm::cont::ArrayHandle<vtkm::FloatDefault> featurePointField;
+    
+		vtkm::cont::ArrayHandle<vtkm::FloatDefault> featurePointField;
 		featurePointField.Allocate(num_pts_slice);
     vtkm::cont::ArrayHandle<vtkm::FloatDefault> featureCellField;
 		featureCellField.Allocate(num_cells_slice);
 		vtkm::cont::ArrayHandle<vtkm::Particle> SeedArray;
 		SeedArray.Allocate(num_seeds_slice);
 
-    vtkm::worklet::DispatcherMapField<worklets::VectorEntropy>(worklets::VectorEntropy(DIM_THETA, DIM_PHI, dims[0], dims[1])).Invoke(featurePointField, velocityArray);
-		
+    vtkm::worklet::DispatcherMapField<worklets::VectorEntropy>(worklets::VectorEntropy(DIM_THETA, DIM_PHI, dims[0], dims[1], neighborhood)).Invoke(featurePointField, velocityArray);
 /*
-  	for(int i = 0; i < num_pts_slice; i++)
-  	{	 
-   		double pt_vort[3];
-    	vorticity_field->GetTuple(i, pt_vort);  
-    	float val = sqrt(pow(pt_vort[0],2.0) + pow(pt_vort[1],2.0) + pow(pt_vort[2], 2.0)) * inflate;
-			featurePointField.WritePortal().Set(i, static_cast<vtkm::FloatDefault>(val));
-  	}		
-	*/
+		int num_samples = neighborhood*neighborhood;
 
+    for(int j = 0; j < dims[1]; j++)
+    { 
+      for(int i = 0; i < dims[0]; i++)
+      { 
+        int num_bins = DIM_THETA * DIM_PHI;
+        int bins[num_bins] = {0};
+				int index = j*dims[0] + i; 
+        float sample_x[num_samples],sample_y[num_samples],sample_z[num_samples];
+          
+        sampleNeighborhood(sample_x, sample_y, sample_z, neighborhood, dims, i, j, vec_x, vec_y, vec_z);
+        estimateDistribution(bins, num_bins, sample_x, sample_y, sample_z, neighborhood);
+        float H = calculateEntropy(bins, num_bins);
+				
+				featurePointField.WritePortal().Set(index, static_cast<vtkm::FloatDefault>(H));
+      }
+    }		
+*/		
 		vtkm::worklet::DispatcherMapField<worklets::PointFieldToCellAverageField>(worklets::PointFieldToCellAverageField(dims[0], dims[1])).Invoke(featureCellField, featurePointField);	
-
     vtkm::worklet::DispatcherMapField<worklets::ExponentWorklet>(worklets::ExponentWorklet(exponent)).Invoke(featureCellField);
     vtkm::worklet::DispatcherMapField<worklets::AbsoluteValueWorklet>(worklets::AbsoluteValueWorklet()).Invoke(featureCellField);
     vtkm::worklet::DispatcherMapField<worklets::MinimumValueWorklet>(worklets::MinimumValueWorklet(minimum)).Invoke(featureCellField);	
+
+
+/*		std::stringstream s;
+		s << "Ent" << k;
+		std::stringstream s2;
+		s2 << "EntP" << k;
+		entOutput.AddPointField(s2.str().c_str(), featurePointField);
+		entOutput.AddCellField(s.str().c_str(), featureCellField);
+*/
 
     vtkm::cont::ArrayHandle<vtkm::FloatDefault> scan;
     scan.Allocate(num_cells_slice);
@@ -653,4 +789,8 @@ int main(int argc, char* argv[])
     std::stringstream s;
     vtkm::io::VTKDataSetWriter wrt(argv[7]);
     wrt.WriteDataSet(output);
+
+//    vtkm::io::VTKDataSetWriter wrt2("entropy_fields.vtk");
+//    wrt2.WriteDataSet(entOutput);
+		
 }
