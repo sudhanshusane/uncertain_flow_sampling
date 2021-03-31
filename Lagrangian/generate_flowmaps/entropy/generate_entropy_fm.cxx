@@ -695,7 +695,7 @@ int main(int argc, char* argv[])
 */		
 		vtkm::worklet::DispatcherMapField<worklets::PointFieldToCellAverageField>(worklets::PointFieldToCellAverageField(dims[0], dims[1])).Invoke(featureCellField, featurePointField);	
     vtkm::worklet::DispatcherMapField<worklets::ExponentWorklet>(worklets::ExponentWorklet(exponent)).Invoke(featureCellField);
-    vtkm::worklet::DispatcherMapField<worklets::AbsoluteValueWorklet>(worklets::AbsoluteValueWorklet()).Invoke(featureCellField);
+//    vtkm::worklet::DispatcherMapField<worklets::AbsoluteValueWorklet>(worklets::AbsoluteValueWorklet()).Invoke(featureCellField);
     vtkm::worklet::DispatcherMapField<worklets::MinimumValueWorklet>(worklets::MinimumValueWorklet(minimum)).Invoke(featureCellField);	
 
 
@@ -751,10 +751,10 @@ int main(int argc, char* argv[])
 			x = pt[0];
 			y = pt[1];
 			seed_set.WritePortal().Set(seed_counter, vtkm::Particle(Vec3f(static_cast<vtkm::FloatDefault>(x), static_cast<vtkm::FloatDefault>(y), static_cast<vtkm::FloatDefault>(seed_time)), seed_counter));
-			seed_counter++;
 			pointCoordinates.push_back(vtkm::Vec3f_32(x,y,seed_time));
 			ids.push_back(seed_counter);
 			start_time.push_back(seed_time);
+			seed_counter++;
 		}
 	}
 

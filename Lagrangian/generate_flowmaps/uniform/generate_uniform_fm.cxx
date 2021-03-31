@@ -159,10 +159,10 @@ int main(int argc, char* argv[])
 				x = (xc[0]+offset) + (k*sx_spacing);
 				y = (yc[0]+offset) + (j*sy_spacing);
 				seed_set.WritePortal().Set(seed_counter, vtkm::Particle(Vec3f(static_cast<vtkm::FloatDefault>(x), static_cast<vtkm::FloatDefault>(y), static_cast<vtkm::FloatDefault>(time)), seed_counter));
-				seed_counter++;
 				pointCoordinates.push_back(vtkm::Vec3f_32(x,y,time));
 				ids.push_back(seed_counter);
 				start_time.push_back(time);
+				seed_counter++;
 			}
 		}	
 	}
