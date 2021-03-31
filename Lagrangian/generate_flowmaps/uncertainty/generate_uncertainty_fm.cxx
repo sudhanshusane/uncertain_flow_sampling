@@ -223,7 +223,7 @@ namespace worklets
       typedef void ControlSignature(FieldInOut);
       typedef void ExecutionSignature(_1);
       
-      VTKM_CONT MinimumValueWorklet(double v)
+      VTKM_CONT MinimumValueWorklet(float v)
       {
         min = v;
       }
@@ -238,7 +238,7 @@ namespace worklets
       }
 
     private:
-      double min;
+      float min;
   };
 }
 
@@ -344,7 +344,7 @@ int main(int argc, char* argv[])
 	float offset = atof(argv[10]);
 	float exponent = atof(argv[11]);	
 	float minimum = atof(argv[12]);	
-	float inflate = atof(argv[13]);	
+	float scale = atof(argv[13]);	
 	int num_seeds_slice = sdims[0]*sdims[1];
 	int num_seeds_total = sdims[0]*sdims[1]*iterations;
 	int num_fm_slice = dims[0]*dims[1];
@@ -360,6 +360,8 @@ int main(int argc, char* argv[])
   
 	vtkm::cont::ArrayHandle<vtkm::Particle> fm_set;
 	fm_set.Allocate(num_fm_total);
+	vtkm::cont::ArrayHandle<vtkm::Particle> start_set;
+	start_set.Allocate(num_fm_total);
 	vtkm::cont::ArrayHandle<vtkm::Particle> gt_set;
 	gt_set.Allocate(num_gt_total);
 	vtkm::cont::ArrayHandle<vtkm::Particle> test_set;
@@ -379,6 +381,7 @@ int main(int argc, char* argv[])
 				x = (xc[0]+offset) + (k*sx_spacing);
 				y = (yc[0]+offset) + (j*sy_spacing);
 				fm_set.WritePortal().Set(fm_counter, vtkm::Particle(Vec3f(static_cast<vtkm::FloatDefault>(x), static_cast<vtkm::FloatDefault>(y), static_cast<vtkm::FloatDefault>(s_time)), fm_counter));
+				start_set.WritePortal().Set(fm_counter, vtkm::Particle(Vec3f(static_cast<vtkm::FloatDefault>(x), static_cast<vtkm::FloatDefault>(y), static_cast<vtkm::FloatDefault>(s_time)), fm_counter));
 				fm_counter++;
 			}
 		}	
@@ -410,7 +413,6 @@ int main(int argc, char* argv[])
 	
 	std::cout << "Computed the ground truth." << std::endl;
 
-
   vtkm::Id3 fmDims(dims[0], dims[1], (iterations+1)); // Appending a fake last layer
   Vec3f fm_origin3d(static_cast<vtkm::FloatDefault>(xc[0]+offset),
                  static_cast<vtkm::FloatDefault>(yc[0]+offset),
@@ -426,7 +428,11 @@ int main(int argc, char* argv[])
 
   for(int i = 0; i < num_fm_total; i++)
   {
-		auto disp = fm_output_set.ReadPortal().Get(i).Pos;
+		auto endpt = fm_output_set.ReadPortal().Get(i).Pos;
+		auto start = start_set.ReadPortal().Get(i).Pos;
+		float disp[2];
+		disp[0] = endpt[0] - start[0];
+		disp[1] = endpt[1] - start[1];
     flow_field.WritePortal().Set(i, vtkm::Vec<vtkm::FloatDefault, 3>(disp[0], disp[1], 1.0));
   }
 
@@ -449,10 +455,30 @@ int main(int argc, char* argv[])
 	
 	std::cout << "Computed the test trajectories." << std::endl;
 
+
+/*
+	vtkm::cont::ArrayHandle<vtkm::FloatDefault> uncertainty_distance;
+	uncertainty_distance.Allocate(num_gt_total);
+
+	std::cout << std::endl;
+	for(int i = 0; i < num_gt_total; i++)
+	{
+    auto gt = gt_output_set.ReadPortal().Get(i).Pos;
+    auto test = test_output_set.ReadPortal().Get(i).Pos;
+    float distance = sqrt(pow(gt[0]-test[0],2.0) + pow(gt[1]-test[1],2.0));  // *scale
+//		std::cout << distance << "\n";
+    uncertainty_distance.WritePortal().Set(i, static_cast<vtkm::FloatDefault>(distance));
+	}
+	std::cout << std::endl;
+*/
+
 	int index_output = 0;
 	int seed_counter = 0;	
 
-	
+  vtkm::Id3 uDims(dims[0], dims[1], 1); // Appending a fake last layer
+  vtkm::cont::DataSet UncOutput;
+  UncOutput = uniformDatasetBuilder3d.Create(uDims, origin3d, spacing3d); 
+
 	for(int k = 0; k < iterations; k++)
 	{
     vtkm::cont::ArrayHandle<vtkm::FloatDefault> featureCellField;
@@ -464,23 +490,30 @@ int main(int argc, char* argv[])
 		{
 			auto gt = gt_output_set.ReadPortal().Get(index_output).Pos;
 			auto test = test_output_set.ReadPortal().Get(index_output).Pos;
-			float distance = sqrt(pow(gt[0]-test[0],2.0) + pow(gt[1]-test[1],2.0)) * inflate;	
+			float distance = sqrt(pow(gt[0]-test[0],2.0) + pow(gt[1]-test[1],2.0)) * scale;
+//			float distance = uncertainty_distance.ReadPortal().Get(index_output);	
 			featureCellField.WritePortal().Set(i, static_cast<vtkm::FloatDefault>(distance));
 			index_output++;
 		}
-    
+  
+		std::stringstream s;
+		s << "Uncertainty_" << k; 
+		UncOutput.AddCellField(s.str().c_str(), featureCellField);
+		
 		vtkm::worklet::DispatcherMapField<worklets::ExponentWorklet>(worklets::ExponentWorklet(exponent)).Invoke(featureCellField);
     vtkm::worklet::DispatcherMapField<worklets::AbsoluteValueWorklet>(worklets::AbsoluteValueWorklet()).Invoke(featureCellField);
     vtkm::worklet::DispatcherMapField<worklets::MinimumValueWorklet>(worklets::MinimumValueWorklet(minimum)).Invoke(featureCellField);	
-
-    vtkm::cont::ArrayHandle<vtkm::FloatDefault> scan;
+    
+		vtkm::cont::ArrayHandle<vtkm::FloatDefault> scan;
     scan.Allocate(num_cells_slice);
       
     vtkm::cont::Algorithm::ScanInclusive(featureCellField, scan);
 
 		float max_val = scan.ReadPortal().Get(scan.GetNumberOfValues()-1);
 		int range = max_val;
-
+		
+		std::cout << "Range: " << range << std::endl;
+	
     struct cmwc_state cmwc1, cmwc2;
     unsigned int seed1 = time(NULL);
     initCMWC(&cmwc1, seed1);
@@ -505,7 +538,6 @@ int main(int argc, char* argv[])
 
     vtkm::cont::ArrayHandle<vtkm::Id> cellIds;
     cellIds.Allocate(num_seeds_slice);
-
     vtkm::cont::Algorithm::UpperBounds(scan,randomNumForCells,cellIds);
 		float seed_time = k*1.0f;
     vtkm::worklet::DispatcherMapField<worklets::RandomSeedInCell>(worklets::RandomSeedInCell(xc, yc, dims[0], dims[1], seed_time)).Invoke(cellIds, randomNumForSeeds, SeedArray);
@@ -515,7 +547,6 @@ int main(int argc, char* argv[])
 			float x, y;
 			auto pt = SeedArray.ReadPortal().Get(i).Pos;
 			x = pt[0];
-			y = pt[1];
       seed_set.WritePortal().Set(seed_counter, vtkm::Particle(Vec3f(static_cast<vtkm::FloatDefault>(x), static_cast<vtkm::FloatDefault>(y), static_cast<vtkm::FloatDefault>(seed_time)), seed_counter));
 			pointCoordinates.push_back(vtkm::Vec3f_32(x,y,seed_time));
 			ids.push_back(seed_counter);
@@ -524,10 +555,8 @@ int main(int argc, char* argv[])
 		}
 		
 	}
-
 	std::cout << "Created seed list. " << seed_counter << std::endl;
 
-/*	
 	// Loop over seed points and update the current locations to form polylines // 
 	res_rk4 = particleadvection.Run(rk4, seed_set, num_steps_iter); // Number of steps hardcoded.
 	auto current_set = res_rk4.Particles;	
@@ -551,11 +580,13 @@ int main(int argc, char* argv[])
     vtkm::cont::DataSetBuilderExplicit dataSetBuilder;
 
     vtkm::cont::DataSet output = dataSetBuilder.Create(pointCoordinates, shapes, numIndices, connectivity);
-		output.AddCellField("ID", ids);
-		output.AddCellField("START_TIME", start_time);
+	    output.AddCellField("ID", ids);
+    output.AddCellField("START_TIME", start_time);
     std::stringstream s;
     vtkm::io::VTKDataSetWriter wrt(argv[7]);
     wrt.WriteDataSet(output);
 
-*/
+		vtkm::io::VTKDataSetWriter wrt2("uncertainty_fields.vtk");
+		wrt2.WriteDataSet(UncOutput);	
+
 }
