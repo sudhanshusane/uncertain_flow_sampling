@@ -185,7 +185,7 @@ namespace worklets
       typedef void ControlSignature(FieldInOut);
       typedef void ExecutionSignature(_1);
       
-      VTKM_CONT ExponentWorklet(double e)
+      VTKM_CONT ExponentWorklet(float e)
       {
         exponent = e;
       }
@@ -197,7 +197,7 @@ namespace worklets
       }
 
     private:
-      double exponent;
+      float exponent;
   };
 
   class AbsoluteValueWorklet : public vtkm::worklet::WorkletMapField
@@ -499,11 +499,10 @@ int main(int argc, char* argv[])
 		std::stringstream s;
 		s << "Uncertainty_" << k; 
 		UncOutput.AddCellField(s.str().c_str(), featureCellField);
-		
+
 		vtkm::worklet::DispatcherMapField<worklets::ExponentWorklet>(worklets::ExponentWorklet(exponent)).Invoke(featureCellField);
-    vtkm::worklet::DispatcherMapField<worklets::AbsoluteValueWorklet>(worklets::AbsoluteValueWorklet()).Invoke(featureCellField);
-    vtkm::worklet::DispatcherMapField<worklets::MinimumValueWorklet>(worklets::MinimumValueWorklet(minimum)).Invoke(featureCellField);	
-    
+		vtkm::worklet::DispatcherMapField<worklets::MinimumValueWorklet>(worklets::MinimumValueWorklet(minimum)).Invoke(featureCellField);
+
 		vtkm::cont::ArrayHandle<vtkm::FloatDefault> scan;
     scan.Allocate(num_cells_slice);
       
@@ -513,8 +512,8 @@ int main(int argc, char* argv[])
 		int range = max_val;
 		
 		std::cout << "Range: " << range << std::endl;
-	
-    struct cmwc_state cmwc1, cmwc2;
+    
+		struct cmwc_state cmwc1, cmwc2;
     unsigned int seed1 = time(NULL);
     initCMWC(&cmwc1, seed1);
     unsigned int seed2 = time(NULL);
@@ -525,8 +524,8 @@ int main(int argc, char* argv[])
 
     vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Int32, 2>> randomNumForSeeds;
     randomNumForSeeds.Allocate(num_seeds_slice);
-
-    for(int i = 0; i < num_seeds_slice; i++)
+    
+		for(int i = 0; i < num_seeds_slice; i++)
     {
       vtkm::Float64 r = (randCMWC(&cmwc1)%range)*1.0d;
       randomNumForCells.WritePortal().Set(i,r);
@@ -540,13 +539,15 @@ int main(int argc, char* argv[])
     cellIds.Allocate(num_seeds_slice);
     vtkm::cont::Algorithm::UpperBounds(scan,randomNumForCells,cellIds);
 		float seed_time = k*1.0f;
-    vtkm::worklet::DispatcherMapField<worklets::RandomSeedInCell>(worklets::RandomSeedInCell(xc, yc, dims[0], dims[1], seed_time)).Invoke(cellIds, randomNumForSeeds, SeedArray);
+    
+		vtkm::worklet::DispatcherMapField<worklets::RandomSeedInCell>(worklets::RandomSeedInCell(xc, yc, dims[0], dims[1], seed_time)).Invoke(cellIds, randomNumForSeeds, SeedArray);
 
 		for(int i = 0; i < num_seeds_slice; i++)
 		{
 			float x, y;
 			auto pt = SeedArray.ReadPortal().Get(i).Pos;
 			x = pt[0];
+			y = pt[1];
       seed_set.WritePortal().Set(seed_counter, vtkm::Particle(Vec3f(static_cast<vtkm::FloatDefault>(x), static_cast<vtkm::FloatDefault>(y), static_cast<vtkm::FloatDefault>(seed_time)), seed_counter));
 			pointCoordinates.push_back(vtkm::Vec3f_32(x,y,seed_time));
 			ids.push_back(seed_counter);
@@ -585,7 +586,7 @@ int main(int argc, char* argv[])
     std::stringstream s;
     vtkm::io::VTKDataSetWriter wrt(argv[7]);
     wrt.WriteDataSet(output);
-
+			
 		vtkm::io::VTKDataSetWriter wrt2("uncertainty_fields.vtk");
 		wrt2.WriteDataSet(UncOutput);	
 
